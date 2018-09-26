@@ -5,7 +5,7 @@
       <div slot="header" class="clearfix">
         <span>文件路径:{{filepath}}</span>
       </div>
-      <el-tree :props="props" :load="loadFileNode" @node-expand="nodeExpand"  lazy>
+      <el-tree :props="props" :load="loadFileNode" @node-expand="nodeExpand" highlight-current  lazy>
         <span class="custom-tree-node" slot-scope="{ node, data }">
           <span> <i :class="data.leaf?'el-icon-tickets':''"></i>{{ node.label }}</span>
         </span>

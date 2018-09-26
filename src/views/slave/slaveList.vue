@@ -2,20 +2,29 @@
     <div>
         <el-row>
             <el-col :span="4" v-for="slave in slaves" :key="slave.id" >
-                <el-card :style="'margin:14px;height:235px;' + slave.style" :body-style="{ padding: '10px' }">
-                    <img :src="img_slave" class="image" @click="loadSlaveApps(slave.id)">
-                    <div style="padding: 10px 2px 0 2px;">
+                <el-card :style="'margin:14px;height:235px;text-align: center;' + slave.style" :body-style="{ padding: '10px' }">
+                    <img :src="img_slave" class="image" style="margin: 0 auto;width:180px;" @click="loadSlaveApps(slave.id)">
+                    <div style="padding: 10px 2px 0 2px;text-align:left;">
                         <span class="slaveAppTitle">{{ slave.name }}({{ slave.ip }})</span>
                         <div class="bottom clearfix">
                             <span class="time">{{ slave.describes || '描述信息' }}</span>
-                            <el-button type="text" class="button" @click="slaveManage(slave.id)">管理</el-button>
+                            <el-dropdown trigger="click" placement="bottom" style="cursor:pointer;float:right;" @command="configSlave">
+                                <span class="el-dropdown-link">
+                                    <i class="el-icon-setting el-icon--right"></i>
+                                </span>
+                                <el-dropdown-menu slot="dropdown">
+                                    <el-dropdown-item :command="{cmd:'addApp',slave:slave}">添加应用</el-dropdown-item>
+                                    <el-dropdown-item :command="{cmd:'show',slave:slave}" :divided=true>详情</el-dropdown-item>
+                                    <el-dropdown-item :command="{cmd:'delete',slave:slave}" :divided=true>删除</el-dropdown-item>
+                                </el-dropdown-menu>
+                            </el-dropdown>
                         </div>
                     </div>
                 </el-card>
             </el-col>
             <el-col :span="4">
-                <el-card style="margin:14px;height:235px;padding-top:20px;">
-                    <img :src="img_add_slave" class="image" @click="newSlave">
+                <el-card style="margin:14px;height:235px;line-height:235px;padding-top:20px;text-align: center;">
+                    <img :src="img_add_slave" class="image" style="margin: 0 auto;width:120px;display: inline-block;vertical-align: top;" @click="newSlave">
                 </el-card>
             </el-col>
         </el-row>
@@ -24,8 +33,12 @@
             <el-col :span="8" v-for="slaveApp in slaveApps" :key="slaveApp.id" >
                 <el-card style="margin:14px;" >
                     <div slot="header" class="clearfix">
-                        应用名称:<span class="slaveAppTitle">{{ slaveApp.appName }}</span>
-                        <span style="float:right;">
+                        应用:<span class="slaveAppTitle">{{ slaveApp.appName }}</span>   
+                        版本:<span class="slaveAppTitle">{{ slaveApp.appPackage?slaveApp.appPackage.version:'未部署' }}</span>
+                        <el-tooltip effect="dark" content="应用有可用更新,点击更新" placement="bottom-start">
+                          <el-button icon="el-icon-upload"  v-if="slaveApp.update" circle style="padding:6px;" @click="appUpdate(slaveApp)"></el-button>
+                        </el-tooltip>
+                        <span style="float:right;padding-top:4px;">
                             <el-dropdown trigger="click" style="cursor:pointer;" @command="handleCommand">
                                 <span class="el-dropdown-link">
                                     状态:<span :class="slaveApp.cls || 'offline'">{{ slaveApp.status || '未知' }}</span><i class="el-icon-setting el-icon--right"></i>
@@ -38,16 +51,18 @@
                             </el-dropdown>
                         </span>
                     </div>
-                    <div class="bottom clearfix">TOMCAT_HOME:{{ slaveApp.appTomcatHome || '' }}</div>
-                    <div class="bottom clearfix">部署目录:{{ slaveApp.appTargetPath || '' }}</div>
-                    <div class="bottom clearfix">备份目录:{{ slaveApp.appBackupPath || '' }}</div>
+                    <div class="bottom clearfix">TOMCAT_HOME:<el-input v-model="slaveApp.appTomcatHome" :disabled="true"></el-input></div>
+                    <div class="bottom clearfix">部署目录:<el-input v-model="slaveApp.appTargetPath" :disabled="true" /></div>
+                    <div class="bottom clearfix">备份目录:<el-input v-model="slaveApp.appBackupPath" :disabled="true" /></div>
                     <div class="clearfix el-card__footer">
-                        <el-button type="primary" size="small" style="float:right" icon="el-icon-document">浏览应用</el-button>
+                        <el-button type="primary" size="medium" style="padding: 8px 10px;" @click="configSlaveApp(slaveApp)" icon="el-icon-setting">维护</el-button>
                     </div>
                 </el-card>
             </el-col>
         </el-row>
-        <slave-form ref="refSlaveForm" :slave="checkedSlave" :visible="slaveFormVisible" @close="slaveFormVisible=false"></slave-form>
+        <slave-form :slaveId="checkedSlaveId" :visible="slaveFormVisible" @close="slaveFormVisible=false" @refresh="this.loadData"></slave-form>
+        <slave-app-form :slaveAppId="checkedSlaveAppId" :title="slaveAppFormTitle" :visible="slaveAppFormVisible" @close="slaveAppFormVisible=false" @refresh="this.loadSlaveApps"></slave-app-form>
+        <slave-update-list :slaveApp="checkedSlaveApp" :visible="updateListVisible" @close="updateListVisible=false" @refresh="this.loadSlaveApps"></slave-update-list>
     </div>
 </template>
 
@@ -56,17 +71,21 @@ import img_slave from '@/assets/slave_images/slave.png'
 import img_app from '@/assets/slave_images/app.png'
 import img_add_slave from '@/assets/slave_images/add.png'
 import slaveForm from '@/views/slave/slaveForm'
-import { loadSlaves, loadSlaveApps, startServer, stopServer, isServerRun } from '@/api/slave'
+import slaveAppForm from '@/views/slave/slaveAppForm'
+import slaveUpdateList from '@/views/slave/slaveUpdateList'
+
+import { getToken } from '@/utils/auth'
+import { loadSlaves, loadSlaveApps, deleteSlave, startServer, stopServer, isServerRun } from '@/api/slave'
 
 export default {
   name: 'slave',
   components: {
-    slaveForm
+    slaveForm,
+    slaveAppForm,
+    slaveUpdateList
   },
   mounted: function() {
-    loadSlaves().then(response => {
-      this.slaves = response.data
-    })
+    this.loadData()
   },
   data() {
     return {
@@ -74,23 +93,46 @@ export default {
       img_app,
       img_add_slave,
       slaveFormVisible: false,
-      checkedSlave: '',
+      slaveAppFormVisible: false,
+      updateListVisible: false,
+      checkedSlaveId: 0,
+      checkedSlaveAppId: 0,
+      checkedSlaveApp: {},
+      slaveAppFormTitle: '',
       slaves: [],
       slaveApps: []
     }
   },
   methods: {
-    slaveManage(slaveId) {
-      this.checkedSlave = this.slaves.find((slave) => {
-        return slave.id === slaveId
+    loadData() {
+      loadSlaves().then(response => {
+        this.slaves = response.data
       })
+    },
+    /**
+     * 应用更新
+     */
+    appUpdate(slaveApp) {
+      this.checkedSlaveApp = slaveApp
+      this.updateListVisible = true
+    },
+    slaveManage(slaveId) {
+      this.checkedSlaveId = slaveId
       this.slaveFormVisible = true
     },
     newSlave() {
-      this.checkedSlave = {}
+      this.checkedSlaveId = 0
       this.slaveFormVisible = true
     },
+    configSlaveApp(slaveApp) {
+      this.checkedSlaveAppId = slaveApp.id
+      this.slaveAppFormTitle = slaveApp.appName
+      this.slaveAppFormVisible = true
+    },
     loadSlaveApps(slaveId) {
+      if (!slaveId) {
+        slaveId = this.lastFocus
+      }
       this.setSlaveFoucs(slaveId)
       const loading = this.$loading({
         lock: true,
@@ -103,18 +145,24 @@ export default {
         var length = slaveApps.length
         if (length === 0) {
           loading.close()
+          this.slaveApps = []
+          return
         }
         slaveApps.forEach(slaveApp => {
           isServerRun({ 'slaveAppId': slaveApp.id }).then(resp => {
             var res = resp.data
-            slaveApp.status = res.isRun ? '在线' : '离线'
-            slaveApp.cls = res.isRun ? 'online' : 'offline'
+            slaveApp.status = (res && res.isRun) ? '在线' : '离线'
+            slaveApp.cls = (res && res.isRun) ? 'online' : 'offline'
             if (--length === 0) {
-              this.slaveApps = slaveApps
               loading.close()
+              this.slaveApps = slaveApps
             }
+          }).catch(e => {
+            loading.close()
           })
         })
+      }).catch(e => {
+        loading.close()
       })
     },
     handleCommand(order) {
@@ -122,6 +170,7 @@ export default {
       var slaveAppId = order.id
       if (cmd === 'start') {
         startServer({ slaveAppId }).then(response => {
+          console.log(response)
           // 判断是否启动
           var isRun = response.data.isRun
           if (isRun) {
@@ -146,7 +195,7 @@ export default {
         // 判断是否在线
         isServerRun({ 'slaveAppId': slaveAppId }).then(resp => {
           if (resp.data.isRun) {
-            var download = process.env.BASE_API + '/slave/dumpThread?slaveAppId=' + slaveAppId
+            var download = process.env.BASE_API + '/slave/dumpThread?slaveAppId=' + slaveAppId + '&X-Token=' + getToken()
             window.open(download)
           } else {
             this.$alert('应用已不在线!请先启动应用服务器!', '警告', {
@@ -157,7 +206,22 @@ export default {
         })
       }
     },
+    configSlave(order) {
+      var cmd = order.cmd
+      var slave = order.slave
+      if (cmd === 'show') {
+        this.slaveManage(slave.id)
+      } else if (cmd === 'delete') {
+        this.$confirm('确定要删除节点[' + slave.name + ']？删除后将不可恢复!', '请确认')
+          .then(_ => {
+            deleteSlave(slave.id).then((response) => {
+              this.loadData()
+            })
+          })
+      }
+    },
     setSlaveFoucs(slaveId) {
+      this.lastFocus = slaveId
       for (let i = 0; i < this.slaves.length; i++) {
         const slave = this.slaves[i]
         if (slave.id === slaveId) {
@@ -230,7 +294,7 @@ export default {
 }
 
 .image {
-  width: 100%;
+  width: 160px;
   cursor:pointer;
   display: block;
 }
@@ -239,6 +303,7 @@ export default {
     font-size: 16px;
     font-weight: bold;
     color: rgb(57, 85, 245);
+    padding-left: 4px;
 }
 .offline {
     background-color: #909399;

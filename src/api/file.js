@@ -15,3 +15,11 @@ export function loadProps(params) {
     params
   })
 }
+
+export function updateIgnore(params) {
+  return request({
+    url: '/file/ignore',
+    method: 'post',
+    data: params
+  })
+}

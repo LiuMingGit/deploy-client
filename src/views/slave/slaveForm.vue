@@ -1,5 +1,5 @@
 <template>
-    <el-dialog title="节点信息" :visible="visible">
+    <el-dialog title="节点信息" :visible="visible" :close-on-click-modal="false" @open="dialogOpen" @close="dialogClose">
         <el-form ref="form" :model="slave" :rules="rules" label-width="80px">
             <el-form-item label="节点名称" prop="name">
                 <el-input v-model="slave.name"></el-input>
@@ -19,12 +19,13 @@
 </template>
 
 <script>
-
+import { loadSlave, saveSlave } from '@/api/slave'
 export default {
   name: 'slaveForm',
-  props: ['slave', 'visible'],
+  props: ['slaveId', 'visible'],
   data() {
     return {
+      slave: {},
       rules: {
         name: [
           { required: true, message: '请输入节点名称', trigger: 'blur' },
@@ -38,11 +39,34 @@ export default {
     }
   },
   methods: {
+    dialogOpen() {
+      // 载入节点信息
+      if (this.slaveId > 0) {
+        loadSlave(this.slaveId).then((response) => {
+          this.slave = response.data
+        })
+      } else {
+        this.slave = {}
+      }
+    },
     dialogClose() {
       this.$emit('close')
     },
     onSubmit() {
-      console.log(this.slave)
+      this.$refs['form'].validate((valid) => {
+        if (valid) {
+          saveSlave(this.slave).then((response) => {
+            if (response.code === 20000) {
+              this.$message({
+                message: '保存成功!',
+                type: 'success'
+              })
+              this.dialogClose()
+              this.$emit('refresh')
+            }
+          })
+        }
+      })
     }
   }
 }
